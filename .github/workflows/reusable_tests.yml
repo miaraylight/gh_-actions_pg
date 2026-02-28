@@ -11,7 +11,7 @@ on:
         required: true
 jobs:
   test:
-    runs-on: ubuntu
+    runs-on: ubuntu-latest
     continue-on-error: true
     steps:
       - name: Checkout
