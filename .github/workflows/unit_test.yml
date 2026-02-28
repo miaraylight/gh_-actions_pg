@@ -1,0 +1,10 @@
+name: Run Unit Tests
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run-tests:
+    uses: miaraylight/gh_-actions_pg/.github/workflows/reusable_tests.yml@main
+    secrets:
+      TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK }}

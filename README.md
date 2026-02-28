@@ -1,4 +1,3 @@
-
 # GitHub Actions Playground
 
 This repository is a personal sandbox for experimenting with **GitHub Actions**.  
