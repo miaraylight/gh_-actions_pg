@@ -1,4 +1,5 @@
-name: Reusable .Net Test Workflow
+name: Reusable .NET Test Workflow
+
 on:
   workflow_call:
     inputs:
@@ -9,57 +10,94 @@ on:
     secrets:
       TEAMS_WEBHOOK:
         required: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
     continue-on-error: true
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ inputs.dotnet_version }}
+
       - name: Restore
         run: dotnet restore
+
       - name: Build
         run: dotnet build --no-restore
-      - name: Run Tests
+
+      - name: Run Tests (TRX)
         id: run_tests
         run: |
-          dotnet test --logger "console;verbosity=minimal" > test_output.txt
+          dotnet test \
+            --logger "trx;LogFileName=test-results.trx" \
+            --results-directory ./TestResults
         continue-on-error: true
+
+      - name: Upload Test Results Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults/*.trx
+
       - name: Extract Test Summary
-        id: summary
         if: always()
         run: |
-          TOTAL=$(grep "Total tests:" test_output.txt | awk '{print $3}')
-          PASSED=$(grep "Passed:" test_output.txt | awk '{print $2}')
-          FAILED=$(grep "Failed:" test_output.txt | awk '{print $2}')
-          SKIPPED=$(grep "Skipped:" test_output.txt | awk '{print $2}')
+          sudo apt-get update
+          sudo apt-get install -y libxml2-utils
+
+          FILE=$(find TestResults -name "*.trx" | head -n 1)
+
+          if [ -z "$FILE" ]; then
+            echo "No TRX file found."
+            echo "TOTAL=0" >> $GITHUB_ENV
+            echo "PASSED=0" >> $GITHUB_ENV
+            echo "FAILED=1" >> $GITHUB_ENV
+            echo "SKIPPED=0" >> $GITHUB_ENV
+            echo "DURATION=0" >> $GITHUB_ENV
+            echo "PERCENT=0" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          TOTAL=$(xmllint --xpath "string(//Counters/@total)" $FILE)
+          PASSED=$(xmllint --xpath "string(//Counters/@passed)" $FILE)
+          FAILED=$(xmllint --xpath "string(//Counters/@failed)" $FILE)
+          SKIPPED=$(xmllint --xpath "string(//Counters/@notExecuted)" $FILE)
+          DURATION=$(xmllint --xpath "string(//Times/@duration)" $FILE)
+
+          if [ "$TOTAL" -gt 0 ]; then
+            PERCENT=$(awk "BEGIN { printf \"%.2f\", ($PASSED/$TOTAL)*100 }")
+          else
+            PERCENT=0
+          fi
+
           echo "TOTAL=$TOTAL" >> $GITHUB_ENV
           echo "PASSED=$PASSED" >> $GITHUB_ENV
           echo "FAILED=$FAILED" >> $GITHUB_ENV
           echo "SKIPPED=$SKIPPED" >> $GITHUB_ENV
-      - name: Upload Test Output
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-output
-          path: test_output.txt
+          echo "DURATION=$DURATION" >> $GITHUB_ENV
+          echo "PERCENT=$PERCENT" >> $GITHUB_ENV
+
       - name: Send Teams Adaptive Card
         if: always()
         run: |
           RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          if [ "$FAILED" = "0" ]; then
+
+          if [ "${FAILED:-1}" = "0" ]; then
             COLOR="2EB886"
             STATUS="SUCCESS"
           else
             COLOR="D13438"
             STATUS="FAILED"
           fi
-          curl -H "Content-Type: application/json" \
-          -d "{
+
+          curl -H "Content-Type: application/json" -d "{
             \"type\": \"message\",
             \"attachments\": [
               {
@@ -84,10 +122,12 @@ jobs:
                       \"type\": \"FactSet\",
                       \"facts\": [
                         { \"title\": \"Status:\", \"value\": \"$STATUS\" },
-                        { \"title\": \"Total:\", \"value\": \"$TOTAL\" },
+                        { \"title\": \"Total Tests:\", \"value\": \"$TOTAL\" },
                         { \"title\": \"Passed:\", \"value\": \"$PASSED\" },
                         { \"title\": \"Failed:\", \"value\": \"$FAILED\" },
-                        { \"title\": \"Skipped:\", \"value\": \"$SKIPPED\" }
+                        { \"title\": \"Skipped:\", \"value\": \"$SKIPPED\" },
+                        { \"title\": \"Pass Rate:\", \"value\": \"$PERCENT%\" },
+                        { \"title\": \"Duration:\", \"value\": \"$DURATION\" }
                       ]
                     }
                   ],
