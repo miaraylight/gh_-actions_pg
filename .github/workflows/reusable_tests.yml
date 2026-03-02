@@ -51,9 +51,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libxml2-utils
-
+      
           FILE=$(find TestResults -name "*.trx" | head -n 1)
-
+      
           if [ -z "$FILE" ]; then
             echo "No TRX file found."
             echo "TOTAL=0" >> $GITHUB_ENV
@@ -64,19 +64,25 @@ jobs:
             echo "PERCENT=0" >> $GITHUB_ENV
             exit 0
           fi
-
-          TOTAL=$(xmllint --xpath "string(//Counters/@total)" $FILE)
-          PASSED=$(xmllint --xpath "string(//Counters/@passed)" $FILE)
-          FAILED=$(xmllint --xpath "string(//Counters/@failed)" $FILE)
-          SKIPPED=$(xmllint --xpath "string(//Counters/@notExecuted)" $FILE)
-          DURATION=$(xmllint --xpath "string(//Times/@duration)" $FILE)
-
+      
+          TOTAL=$(xmllint --xpath "string(//*[local-name()='Counters']/@total)" $FILE)
+          PASSED=$(xmllint --xpath "string(//*[local-name()='Counters']/@passed)" $FILE)
+          FAILED=$(xmllint --xpath "string(//*[local-name()='Counters']/@failed)" $FILE)
+          SKIPPED=$(xmllint --xpath "string(//*[local-name()='Counters']/@notExecuted)" $FILE)
+          DURATION=$(xmllint --xpath "string(//*[local-name()='Times']/@duration)" $FILE)
+      
+          if [ -z "$TOTAL" ]; then TOTAL=0; fi
+          if [ -z "$PASSED" ]; then PASSED=0; fi
+          if [ -z "$FAILED" ]; then FAILED=0; fi
+          if [ -z "$SKIPPED" ]; then SKIPPED=0; fi
+          if [ -z "$DURATION" ]; then DURATION="N/A"; fi
+      
           if [ "$TOTAL" -gt 0 ]; then
             PERCENT=$(awk "BEGIN { printf \"%.2f\", ($PASSED/$TOTAL)*100 }")
           else
             PERCENT=0
           fi
-
+      
           echo "TOTAL=$TOTAL" >> $GITHUB_ENV
           echo "PASSED=$PASSED" >> $GITHUB_ENV
           echo "FAILED=$FAILED" >> $GITHUB_ENV
